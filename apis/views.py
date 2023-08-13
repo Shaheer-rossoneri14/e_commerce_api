@@ -1,14 +1,16 @@
 import json
 import redis
-from .models import User, Product, Order, OrderItem
-from .serializers import UserSerializer, ProductSerializer, OrderSerializer, OrderItemSerializer
+from e_commerece import settings
+from .models import Product, Order
+from .serializers import UserSerializer, ProductSerializer, OrderSerializer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authtoken.models import Token
 
-redis_conn = redis.StrictRedis(host='127.0.0.1', port=6379, db=1)
+redis_conn = redis.StrictRedis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=settings.REDIS_DB)
+
 # PRODUCT 
 class Product_list(APIView):
     permission_classes = [IsAuthenticated]
@@ -30,7 +32,7 @@ class Product_list(APIView):
 
         # Serialize the data to JSON and cache it in Redis
         serialized_data = json.dumps(serializer.data)
-        redis_conn.set('products_list', serialized_data, ex=3600)
+        redis_conn.set('products_list', serialized_data, ex=settings.REDIS_CACHE_EXPIRATION)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
     
