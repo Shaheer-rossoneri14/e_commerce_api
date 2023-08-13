@@ -1,4 +1,5 @@
-from django.http import Http404
+import json
+import redis
 from .models import User, Product, Order, OrderItem
 from .serializers import UserSerializer, ProductSerializer, OrderSerializer, OrderItemSerializer
 from rest_framework.response import Response
@@ -7,13 +8,30 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authtoken.models import Token
 
+redis_conn = redis.StrictRedis(host='127.0.0.1', port=6379, db=1)
 # PRODUCT 
 class Product_list(APIView):
     permission_classes = [IsAuthenticated]
     
-    def get(self, request):
+    '''def get(self, request):
         products = Product.objects.all()
         serializer = ProductSerializer(products, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)'''
+    
+    def get(self, request):
+    # Attempt to retrieve data from Redis cache
+        cached_data = redis_conn.get('products_list')
+        if cached_data:
+            cached_data = json.loads(cached_data.decode('utf-8'))
+            return Response(cached_data, status=status.HTTP_200_OK)
+
+        products = Product.objects.all()
+        serializer = ProductSerializer(products, many=True)
+
+        # Serialize the data to JSON and cache it in Redis
+        serialized_data = json.dumps(serializer.data)
+        redis_conn.set('products_list', serialized_data, ex=3600)
+
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     def post(self, request):
@@ -27,14 +45,34 @@ class Product_list(APIView):
 
 class Product_detail(APIView):
     permission_classes = [IsAuthenticated]
-    def get(self, request, pk):
+    '''def get(self, request, pk):
         try:
             product = Product.objects.get(pk=pk)
             serializer = ProductSerializer(product)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except:
-            return Response({'Error': ' Product Does not exist'}, status=status.HTTP_204_NO_CONTENT)
+            return Response({'Error': ' Product Does not exist'}, status=status.HTTP_204_NO_CONTENT)'''
         
+
+    def get(self, request, pk):
+        # Attempt to retrieve data from Redis cache
+        cached_data = redis_conn.get(f'product:{pk}')
+        if cached_data:
+            cached_data = json.loads(cached_data.decode('utf-8'))
+            return Response(cached_data, status=status.HTTP_200_OK)
+
+        try:
+            product = Product.objects.get(pk=pk)
+            serializer = ProductSerializer(product)
+
+            # Serialize the data to JSON and cache it in Redis
+            serialized_data = json.dumps(serializer.data)
+            redis_conn.set(f'product:{pk}', serialized_data, ex=3600)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Product.DoesNotExist:
+            return Response({'Error': 'Product does not exist'}, status=status.HTTP_204_NO_CONTENT)
+                
     def put(self, request, pk):
         product = Product.objects.get(pk=pk)
         serializer = ProductSerializer(product, data=request.data)
